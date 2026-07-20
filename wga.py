@@ -109,12 +109,10 @@ async def link_x(token, x_creds, idx):
         f'{BASE_URL}/users/social-link/x/authorize',
         headers={**api_headers(token), 'x-code-challenge': code_challenge},
     )
-    log(idx, f'[X] Authorize status: {r.status_code}')
     data = r.json()
     auth_url = data.get('authorizationUrl')
     if not auth_url:
         raise Exception(f'Authorize gagal: {data}')
-    log(idx, f'[X] Auth URL: {auth_url[:80]}...')
 
     # Parse params dari auth_url
     parsed_auth = urlparse(auth_url)
@@ -146,14 +144,11 @@ async def link_x(token, x_creds, idx):
         headers=x_api_headers,
         impersonate='chrome110'
     )
-    log(idx, f'[X] OAuth GET status: {r.status_code}')
-    log(idx, f'[X] OAuth GET response: {r.text[:300]}')
 
     resp_json = r.json()
     auth_code = resp_json.get('auth_code')
     if not auth_code:
         raise Exception(f'auth_code tidak ditemukan: {resp_json}')
-    log(idx, f'[X] auth_code: {auth_code[:20]}...')
 
     # Approve
     r2 = cf_requests.post(
@@ -171,8 +166,6 @@ async def link_x(token, x_creds, idx):
         allow_redirects=False,
         impersonate='chrome110'
     )
-    log(idx, f'[X] Approve status: {r2.status_code}')
-    log(idx, f'[X] Approve response: {r2.text[:300]}')
 
     approve_data = r2.json()
     redirect_uri = approve_data.get('redirect_uri')
@@ -180,14 +173,25 @@ async def link_x(token, x_creds, idx):
         raise Exception(f'redirect_uri tidak ada: {approve_data}')
 
     r3 = requests.get(redirect_uri, headers=api_headers(token), allow_redirects=True)
-    log(idx, f'[X] Callback status: {r3.status_code}')
-    log(idx, f'[X] Callback response: {r3.text[:300]}')
     if r3.status_code != 200:
         raise Exception(f'WGA callback gagal: {r3.status_code} {r3.text}')
     log(idx, '[X] X linked ✓')
 
 # ============================================================
-# STEP 3 — FOLLOW
+# STEP 3 — CHECK (total XYZ)
+# ============================================================
+def do_check(token, idx):
+    r = requests.get(f"{BASE_URL}/users/random-boxes", headers=api_headers(token))
+    if r.status_code != 200:
+        log(idx, f"[Check] Gagal: {r.status_code}")
+        return
+    data = r.json()
+    total_xyz = data.get("totalEarnedXyz", 0)
+    unopened  = data.get("unopenedCount", 0)
+    log(idx, f"[Check] Total XYZ: {total_xyz} | Box belum dibuka: {unopened}")
+
+# ============================================================
+# STEP 4 — FOLLOW
 # ============================================================
 def do_follow(token, idx):
     endpoints = [
@@ -269,6 +273,9 @@ async def process_account(idx, mode):
         elif mode == 'open box':
             do_open_boxes(token, idx)
 
+        elif mode == 'check':
+            do_check(token, idx)
+
         log(idx, 'Selesai ✓')
     except Exception as e:
         log(idx, f'ERROR: {e}')
@@ -292,8 +299,9 @@ async def main():
     print('  1. all      — link X + follow + check-in + open box')
     print('  2. daily    — check-in + open box')
     print('  3. open box — buka box aja')
-    mode_map = {'1': 'all', '2': 'daily', '3': 'open box'}
-    pilihan = input('\nPilih mode [1/2/3]: ').strip()
+    print('  4. check   — cek total XYZ')
+    mode_map = {'1': 'all', '2': 'daily', '3': 'open box', '4': 'check'}
+    pilihan = input('\nPilih mode [1/2/3/4]: ').strip()
     mode = mode_map.get(pilihan)
     if not mode:
         print('Pilihan tidak valid.')
