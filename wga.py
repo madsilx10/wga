@@ -143,18 +143,24 @@ async def link_x(token, x_creds, idx):
         raise Exception(f'Authorize gagal: {data}')
     log(idx, f'[X] Auth URL: {auth_url[:80]}...')
 
+    from curl_cffi import requests as cf_requests
+
     x_headers = {
         'Cookie': f'auth_token={auth_token}; ct0={ct0}',
-        'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
-        'x-csrf-token': ct0,
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
         'Referer': 'https://wga.xyz/',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
     }
 
-    r = requests.get(auth_url, headers=x_headers, allow_redirects=True)
+    r = cf_requests.get(auth_url, headers=x_headers, allow_redirects=True, impersonate='chrome110')
     log(idx, f'[X] OAuth GET status: {r.status_code}')
-    log(idx, f'[X] Response: {r.text[:300]}')
+    log(idx, f'[X] Response: {r.text[:500]}')
 
 # ============================================================
 # PROCESS AKUN
