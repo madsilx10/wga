@@ -168,6 +168,7 @@ async def link_x(token, x_creds, idx):
     soup = BeautifulSoup(r.text, 'html.parser')
     auth_token_field = soup.find('input', {'name': 'authenticity_token'})
     if not auth_token_field:
+        log(idx, f'[X] HTML: {r.text[:1000]}')
         raise Exception('[X] authenticity_token tidak ditemukan')
     authenticity_token = auth_token_field['value']
     log(idx, f'[X] authenticity_token: {authenticity_token[:20]}...')
