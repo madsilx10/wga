@@ -125,30 +125,23 @@ async def link_x(token, x_creds, idx):
     auth_token = x_creds['auth_token']
     ct0        = x_creds['ct0']
 
+    # Generate PKCE dulu
     code_verifier  = secrets.token_urlsafe(32)
     code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode()).digest()
     ).rstrip(b'=').decode()
-    state = secrets.token_urlsafe(16)
 
-    CLIENT_ID    = 'NHV2cmdlek00UGpPNEM5TXlKcW46MTpjaQ'
-    REDIRECT_URI = 'https://api.wga.xyz/users/social-link/x/callback'
-    SCOPE        = 'tweet.read users.read follows.write follows.read'
-
-    r = requests.get(f'{BASE_URL}/users/social-link/x/authorize', headers=api_headers(token))
-    log(idx, f'[X] Authorize status: {r.status_code}')
-    log(idx, f'[X] Authorize response: {r.text}')
-
-    params = (
-        f'response_type=code'
-        f'&client_id={CLIENT_ID}'
-        f'&redirect_uri={REDIRECT_URI}'
-        f'&scope={SCOPE.replace(" ", "+")}'
-        f'&state={state}'
-        f'&code_challenge={code_challenge}'
-        f'&code_challenge_method=S256'
+    # Hit authorize WGA dengan code_challenge kita
+    r = requests.get(
+        f'{BASE_URL}/users/social-link/x/authorize',
+        headers={**api_headers(token), 'x-code-challenge': code_challenge},
     )
-    oauth_url = f'https://x.com/i/oauth2/authorize?{params}'
+    log(idx, f'[X] Authorize status: {r.status_code}')
+    data = r.json()
+    auth_url = data.get('authorizationUrl')
+    if not auth_url:
+        raise Exception(f'Authorize gagal: {data}')
+    log(idx, f'[X] Auth URL: {auth_url[:80]}...')
 
     x_headers = {
         'Cookie': f'auth_token={auth_token}; ct0={ct0}',
@@ -159,7 +152,7 @@ async def link_x(token, x_creds, idx):
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     }
 
-    r = requests.get(oauth_url, headers=x_headers, allow_redirects=True)
+    r = requests.get(auth_url, headers=x_headers, allow_redirects=True)
     log(idx, f'[X] OAuth GET status: {r.status_code}')
     log(idx, f'[X] Response: {r.text[:300]}')
 
