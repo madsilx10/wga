@@ -4,7 +4,7 @@ import time
 import hashlib
 import base64
 import secrets
-import httpx
+import requests
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from pyrogram import Client
@@ -60,7 +60,7 @@ def login(privkey):
     address = acct.address
 
     # Nonce
-    r = httpx.post(f'{BASE_URL}/users/nonce', json={'address': address}, headers=api_headers())
+    r = requests.post(f'{BASE_URL}/users/nonce', json={'address': address}, headers=api_headers())
     message = r.json()['message']
 
     # Sign
@@ -71,7 +71,7 @@ def login(privkey):
         signature = '0x' + signature
 
     # Login
-    r = httpx.post(f'{BASE_URL}/users/login', headers=api_headers(), json={
+    r = requests.post(f'{BASE_URL}/users/login', headers=api_headers(), json={
         'address': address,
         'referrerInviteCode': INVITE_CODE,
         'signature': signature,
@@ -92,7 +92,7 @@ async def link_telegram(token, session_str, idx):
 
     log(idx, f'Telegram ID: {telegram_id}')
 
-    r = httpx.post(f'{BASE_URL}/users/telegram/link', headers=api_headers(token), json={'telegramId': telegram_id})
+    r = requests.post(f'{BASE_URL}/users/telegram/link', headers=api_headers(token), json={'telegramId': telegram_id})
     if r.status_code != 200:
         raise Exception(f'Link Telegram gagal: {r.status_code} {r.text}')
     log(idx, 'Telegram linked ✓')
@@ -116,7 +116,7 @@ async def link_x(token, x_creds, idx):
     SCOPE        = 'tweet.read users.read follows.write follows.read'
 
     # Trigger authorize di WGA
-    httpx.get(f'{BASE_URL}/users/social-link/x/authorize', headers=api_headers(token))
+    requests.get(f'{BASE_URL}/users/social-link/x/authorize', headers=api_headers(token))
 
     # Build OAuth URL
     params = (
@@ -139,7 +139,7 @@ async def link_x(token, x_creds, idx):
     }
 
     # GET OAuth page
-    r = httpx.get(oauth_url, headers=x_headers, follow_redirects=False)
+    r = requests.get(oauth_url, headers=x_headers, allow_redirects=False)
     log(idx, f'[X] OAuth page status: {r.status_code} — TODO: approve flow')
 
     # TODO: parse + approve, lanjut setelah test
