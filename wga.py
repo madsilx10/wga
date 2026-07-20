@@ -176,8 +176,8 @@ async def process_account(idx):
         address, token = login(privkey)
         log(idx, f'Login OK → {address}')
 
-        await link_telegram(token, session, idx)
-        await asyncio.sleep(1)
+        # await link_telegram(token, session, idx)
+        # await asyncio.sleep(1)
 
         await link_x(token, x_creds, idx)
 
