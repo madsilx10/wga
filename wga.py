@@ -180,10 +180,19 @@ async def link_x(token, x_creds, idx):
         'Referer': auth_url,
     }
 
+    # Approve via endpoint yang dipake frontend X
     r2 = cf_requests.post(
-        'https://api.x.com/2/oauth2/authorize',
-        headers=approve_headers,
-        json={
+        'https://x.com/i/api/2/oauth2/authorize',
+        headers={
+            'Cookie': f'auth_token={auth_token}; ct0={ct0}',
+            'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+            'x-csrf-token': ct0,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
+            'Referer': auth_url,
+            'Origin': 'https://x.com',
+        },
+        data={
             'approval': 'true',
             'code_challenge': code_challenge,
             'code_challenge_method': 'S256',
