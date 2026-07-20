@@ -6,17 +6,16 @@ import requests
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from pyrogram import Client
-from pyrogram.raw.functions.messages import SendBotRequestedPeer
 
 # ============================================================
 # CONFIG
 # ============================================================
-BASE_URL     = 'https://api.wga.xyz'
-INVITE_CODE  = 'Z0V0DL3T'
-TG_API_ID    = 0       # isi API ID dari my.telegram.org
-TG_API_HASH  = ''      # isi API HASH dari my.telegram.org
-WGA_BOT      = 'WgaAgentBot'
-DELAY        = 3
+BASE_URL    = 'https://api.wga.xyz'
+INVITE_CODE = 'Z0V0DL3T'
+TG_API_ID   = 0       # isi API ID dari my.telegram.org
+TG_API_HASH = ''      # isi API HASH dari my.telegram.org
+WGA_BOT     = 'WgaAgentBot'
+DELAY       = 3
 
 # ============================================================
 # READ FILES
@@ -79,59 +78,33 @@ def login(privkey):
     return address, data['accessToken']
 
 # ============================================================
-# STEP 2 — LINK TELEGRAM
+# CEK STATUS SOCIAL LINK
 # ============================================================
-async def link_telegram(token, session_str, idx):
-    app = Client(
-        f'wga_{idx}',
-        api_id=TG_API_ID,
-        api_hash=TG_API_HASH,
-        session_string=session_str
-    )
-    async with app:
-        me          = await app.get_me()
-        telegram_id = str(me.id)
-        log(idx, f'Telegram ID: {telegram_id}')
-
-        # Kirim /start ke bot WGA buat trigger konfirmasi
-        await app.send_message(WGA_BOT, '/start')
-        await asyncio.sleep(2)
-
-        # Ambil pesan terakhir dari bot, cari tombol konfirmasi
-        async for msg in app.get_chat_history(WGA_BOT, limit=5):
-            if msg.reply_markup:
-                for row in msg.reply_markup.inline_keyboard:
-                    for btn in row:
-                        if btn.callback_data:
-                            await app.request_callback_answer(
-                                chat_id=WGA_BOT,
-                                message_id=msg.id,
-                                callback_data=btn.callback_data
-                            )
-                            log(idx, 'Konfirmasi bot ✓')
-                            break
-                break
-
-    # POST telegramId ke WGA
-    r = requests.post(f'{BASE_URL}/users/telegram/link', headers=api_headers(token), json={'telegramId': telegram_id})
+def is_x_linked(token):
+    r = requests.get(f'{BASE_URL}/users/social-link/status', headers=api_headers(token))
     if r.status_code != 200:
-        raise Exception(f'Link Telegram gagal: {r.status_code} {r.text}')
-    log(idx, 'Telegram linked ✓')
+        return False
+    data = r.json()
+    # cek field x / twitter linked
+    return data.get('x') or data.get('twitter') or data.get('xLinked') or False
 
 # ============================================================
-# STEP 3 — LINK X (PKCE OAUTH2)
+# STEP 2 — LINK X (PKCE OAUTH2)
 # ============================================================
 async def link_x(token, x_creds, idx):
+    from curl_cffi import requests as cf_requests
+    from urllib.parse import urlparse, parse_qs
+
     auth_token = x_creds['auth_token']
     ct0        = x_creds['ct0']
 
-    # Generate PKCE dulu
+    # Generate PKCE
     code_verifier  = secrets.token_urlsafe(32)
     code_challenge = base64.urlsafe_b64encode(
         hashlib.sha256(code_verifier.encode()).digest()
     ).rstrip(b'=').decode()
 
-    # Hit authorize WGA dengan code_challenge kita
+    # Hit authorize WGA
     r = requests.get(
         f'{BASE_URL}/users/social-link/x/authorize',
         headers={**api_headers(token), 'x-code-challenge': code_challenge},
@@ -143,12 +116,9 @@ async def link_x(token, x_creds, idx):
         raise Exception(f'Authorize gagal: {data}')
     log(idx, f'[X] Auth URL: {auth_url[:80]}...')
 
-    from curl_cffi import requests as cf_requests
-    from urllib.parse import urlparse, parse_qs
-
-    # Parse semua params dari auth_url
+    # Parse params dari auth_url
     parsed_auth = urlparse(auth_url)
-    qs = parse_qs(parsed_auth.query)
+    qs    = parse_qs(parsed_auth.query)
     state = qs.get('state', [''])[0]
 
     x_api_headers = {
@@ -161,7 +131,7 @@ async def link_x(token, x_creds, idx):
         'Origin': 'https://x.com',
     }
 
-    # GET ke X internal API — returna JSON dengan auth_code
+    # GET ke X internal API → dapet auth_code dari JSON
     r = cf_requests.get(
         'https://x.com/i/api/2/oauth2/authorize',
         params={
@@ -185,7 +155,7 @@ async def link_x(token, x_creds, idx):
         raise Exception(f'auth_code tidak ditemukan: {resp_json}')
     log(idx, f'[X] auth_code: {auth_code[:20]}...')
 
-    # Approve via endpoint yang dipake frontend X
+    # Approve
     r2 = cf_requests.post(
         'https://x.com/i/api/2/oauth2/authorize',
         headers={
@@ -197,17 +167,13 @@ async def link_x(token, x_creds, idx):
             'Referer': auth_url,
             'Origin': 'https://x.com',
         },
-        data={
-            'approval': 'true',
-            'code': auth_code,
-        },
+        data={'approval': 'true', 'code': auth_code},
         allow_redirects=False,
         impersonate='chrome110'
     )
     log(idx, f'[X] Approve status: {r2.status_code}')
     log(idx, f'[X] Approve response: {r2.text[:300]}')
 
-    # Extract redirect_uri dari response, lalu hit WGA callback
     approve_data = r2.json()
     redirect_uri = approve_data.get('redirect_uri')
     if not redirect_uri:
@@ -221,30 +187,100 @@ async def link_x(token, x_creds, idx):
     log(idx, '[X] X linked ✓')
 
 # ============================================================
+# STEP 3 — FOLLOW
+# ============================================================
+def do_follow(token, idx):
+    endpoints = [
+        '/users/social-link/X/follow',
+        '/users/social-link/X_WGA_XYZ/follow',
+    ]
+    for ep in endpoints:
+        r = requests.post(f'{BASE_URL}{ep}', headers=api_headers(token))
+        log(idx, f'[Follow] {ep.split("/")[-2]} → {r.status_code}')
+
+# ============================================================
+# STEP 4 — CHECK IN
+# ============================================================
+def do_checkin(token, idx):
+    r = requests.post(f'{BASE_URL}/users/check-in', headers=api_headers(token))
+    log(idx, f'[Check-in] status: {r.status_code}')
+    if r.status_code == 200:
+        data = r.json()
+        log(idx, f'[Check-in] rewarded: {data.get("rewarded")} | box: {data.get("randomBoxIssued")}')
+    else:
+        log(idx, f'[Check-in] response: {r.text[:200]}')
+
+# ============================================================
+# STEP 5 — OPEN BOX
+# ============================================================
+def do_open_boxes(token, idx):
+    r = requests.get(f'{BASE_URL}/users/random-boxes', headers=api_headers(token))
+    if r.status_code != 200:
+        log(idx, f'[Box] Gagal ambil boxes: {r.status_code}')
+        return
+    boxes = r.json().get('boxes', [])
+    issued = [b for b in boxes if b.get('status') == 'ISSUED']
+    if not issued:
+        log(idx, '[Box] Tidak ada box yang perlu dibuka')
+        return
+    for box in issued:
+        box_id = box['id']
+        reason = box.get('reason', '')
+        r2 = requests.post(f'{BASE_URL}/users/random-boxes/{box_id}/open', headers=api_headers(token))
+        if r2.status_code == 200:
+            data = r2.json()
+            log(idx, f'[Box] {reason} (id:{box_id}) → reward: {data.get("rewardAmount")}')
+        else:
+            log(idx, f'[Box] {reason} (id:{box_id}) → gagal {r2.status_code}')
+
+# ============================================================
 # PROCESS AKUN
 # ============================================================
-async def process_account(idx):
+async def process_account(idx, mode):
     privkey = wallets[idx]
-    session = sessions[idx]
-    x_creds = x_accounts[idx]
+    x_creds = x_accounts[idx] if idx < len(x_accounts) else None
 
-    if not privkey or not session or not x_creds:
-        log(idx, 'Data tidak lengkap, skip.')
-        return
-
-    log(idx, 'Mulai...')
+    log(idx, f'Mulai [{mode}]...')
     try:
         address, token = login(privkey)
         log(idx, f'Login OK → {address}')
 
-        # await link_telegram(token, session, idx)
-        # await asyncio.sleep(1)
+        if mode == 'all':
+            # Cek X linked dulu
+            if is_x_linked(token):
+                log(idx, '[X] Sudah linked, skip konek X')
+            else:
+                if not x_creds:
+                    log(idx, '[X] xakun.txt tidak ada untuk akun ini, skip konek X')
+                else:
+                    await link_x(token, x_creds, idx)
+            await asyncio.sleep(1)
+            do_follow(token, idx)
+            await asyncio.sleep(1)
+            do_checkin(token, idx)
+            await asyncio.sleep(1)
+            do_open_boxes(token, idx)
 
-        await link_x(token, x_creds, idx)
+        elif mode == 'daily':
+            do_checkin(token, idx)
+            await asyncio.sleep(1)
+            do_open_boxes(token, idx)
+
+        elif mode == 'open box':
+            do_open_boxes(token, idx)
 
         log(idx, 'Selesai ✓')
     except Exception as e:
         log(idx, f'ERROR: {e}')
+
+# ============================================================
+# RUN AKUN
+# ============================================================
+async def run_accounts(mode, indices):
+    for i, idx in enumerate(indices):
+        await process_account(idx, mode)
+        if i < len(indices) - 1:
+            await asyncio.sleep(DELAY)
 
 # ============================================================
 # MAIN
@@ -252,27 +288,31 @@ async def process_account(idx):
 async def main():
     total = len(wallets)
     print(f'\n=== WGA.xyz Bot | {total} akun ===')
-    print('1. Jalankan 1 akun')
-    print('2. Jalankan semua akun')
-    print('3. Jalankan dari akun ke-N sampai akhir')
-    pilihan = input('\nPilih [1/2/3]: ').strip()
+    print('Mode:')
+    print('  1. all      — link X + follow + check-in + open box')
+    print('  2. daily    — check-in + open box')
+    print('  3. open box — buka box aja')
+    mode_map = {'1': 'all', '2': 'daily', '3': 'open box'}
+    pilihan = input('\nPilih mode [1/2/3]: ').strip()
+    mode = mode_map.get(pilihan)
+    if not mode:
+        print('Pilihan tidak valid.')
+        return
 
-    if pilihan == '1':
+    print('\nAkun:')
+    print('  1. Jalankan 1 akun')
+    print('  2. Jalankan semua akun')
+    print('  3. Jalankan dari akun ke-N sampai akhir')
+    akun_pilihan = input('\nPilih [1/2/3]: ').strip()
+
+    if akun_pilihan == '1':
         idx = int(input(f'Akun ke berapa? (1-{total}): ').strip()) - 1
-        await process_account(idx)
-
-    elif pilihan == '2':
-        for i in range(total):
-            await process_account(i)
-            if i < total - 1:
-                await asyncio.sleep(DELAY)
-
-    elif pilihan == '3':
+        await run_accounts(mode, [idx])
+    elif akun_pilihan == '2':
+        await run_accounts(mode, list(range(total)))
+    elif akun_pilihan == '3':
         start = int(input(f'Mulai dari akun ke berapa? (1-{total}): ').strip()) - 1
-        for i in range(start, total):
-            await process_account(i)
-            if i < total - 1:
-                await asyncio.sleep(DELAY)
+        await run_accounts(mode, list(range(start, total)))
     else:
         print('Pilihan tidak valid.')
 
