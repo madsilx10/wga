@@ -154,10 +154,12 @@ async def link_x(token, x_creds, idx):
         'x-csrf-token': ct0,
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
         'Referer': 'https://wga.xyz/',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     }
 
-    r = requests.get(oauth_url, headers=x_headers, allow_redirects=False)
-    log(idx, f'[X] OAuth status: {r.status_code} — TODO')
+    r = requests.get(oauth_url, headers=x_headers, allow_redirects=True)
+    log(idx, f'[X] OAuth GET status: {r.status_code}')
+    log(idx, f'[X] Response: {r.text[:300]}')
 
 # ============================================================
 # PROCESS AKUN
