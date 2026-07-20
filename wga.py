@@ -144,6 +144,8 @@ async def link_x(token, x_creds, idx):
     log(idx, f'[X] Auth URL: {auth_url[:80]}...')
 
     from curl_cffi import requests as cf_requests
+    from urllib.parse import urlparse, parse_qs
+    from bs4 import BeautifulSoup
 
     x_headers = {
         'Cookie': f'auth_token={auth_token}; ct0={ct0}',
@@ -158,9 +160,60 @@ async def link_x(token, x_creds, idx):
         'Upgrade-Insecure-Requests': '1',
     }
 
+    # GET halaman OAuth
     r = cf_requests.get(auth_url, headers=x_headers, allow_redirects=True, impersonate='chrome110')
     log(idx, f'[X] OAuth GET status: {r.status_code}')
-    log(idx, f'[X] Response: {r.text[:500]}')
+
+    # Parse authenticity_token
+    soup = BeautifulSoup(r.text, 'html.parser')
+    auth_token_field = soup.find('input', {'name': 'authenticity_token'})
+    if not auth_token_field:
+        raise Exception('[X] authenticity_token tidak ditemukan')
+    authenticity_token = auth_token_field['value']
+    log(idx, f'[X] authenticity_token: {authenticity_token[:20]}...')
+
+    # POST approve
+    approve_headers = {
+        **x_headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': auth_url,
+        'Sec-Fetch-Site': 'same-origin',
+        'x-csrf-token': ct0,
+    }
+    approve_data = {
+        'authenticity_token': authenticity_token,
+        'redirect_uri': 'https://api.wga.xyz/users/social-link/x/callback',
+        'client_id': 'NHV2cmdlek00UGpPNEM5TXlKcW46MTpjaQ',
+        'state': parse_qs(urlparse(auth_url).query).get('state', [''])[0],
+        'code_challenge': parse_qs(urlparse(auth_url).query).get('code_challenge', [''])[0],
+        'code_challenge_method': 'S256',
+        'response_type': 'code',
+        'scope': 'tweet.read users.read follows.write follows.read',
+    }
+
+    r2 = cf_requests.post(
+        'https://x.com/i/oauth2/authorize',
+        headers=approve_headers,
+        data=approve_data,
+        allow_redirects=False,
+        impersonate='chrome110'
+    )
+    log(idx, f'[X] Approve status: {r2.status_code}')
+
+    # Ambil code dari redirect
+    location = r2.headers.get('location', '')
+    log(idx, f'[X] Redirect: {location[:100]}')
+
+    parsed = urlparse(location)
+    code = parse_qs(parsed.query).get('code', [None])[0]
+    if not code:
+        raise Exception(f'[X] Code tidak ditemukan: {location}')
+
+    # Hit callback WGA
+    callback_url = f'https://api.wga.xyz/users/social-link/x/callback?state={approve_data["state"]}&code={code}'
+    r3 = requests.get(callback_url, headers=api_headers(token), allow_redirects=False)
+    log(idx, f'[X] Callback status: {r3.status_code}')
+    log(idx, 'X linked ✓')
 
 # ============================================================
 # PROCESS AKUN
