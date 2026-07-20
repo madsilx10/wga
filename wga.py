@@ -145,37 +145,45 @@ async def link_x(token, x_creds, idx):
 
     from curl_cffi import requests as cf_requests
     from urllib.parse import urlparse, parse_qs
-    from bs4 import BeautifulSoup
 
-    x_headers = {
-        'Cookie': f'auth_token={auth_token}; ct0={ct0}',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
-        'Referer': 'https://wga.xyz/',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-    }
-
-    # GET halaman OAuth
-    r = cf_requests.get(auth_url, headers=x_headers, allow_redirects=True, impersonate='chrome110')
-    log(idx, f'[X] OAuth GET status: {r.status_code}')
-
-    # Parse auth_code dari HTML response
-    soup = BeautifulSoup(r.text, 'html.parser')
-    code_input = soup.find('input', {'name': 'code'})
-    if not code_input:
-        raise Exception(f'auth_code tidak ditemukan di halaman X. HTML: {r.text[:500]}')
-    auth_code = code_input['value']
-    log(idx, f'[X] auth_code: {auth_code[:20]}...')
-
-    # Parse state dari auth_url
+    # Parse semua params dari auth_url
     parsed_auth = urlparse(auth_url)
     qs = parse_qs(parsed_auth.query)
     state = qs.get('state', [''])[0]
+
+    x_api_headers = {
+        'Cookie': f'auth_token={auth_token}; ct0={ct0}',
+        'Authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+        'x-csrf-token': ct0,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
+        'Referer': auth_url,
+        'Origin': 'https://x.com',
+    }
+
+    # GET ke X internal API — returna JSON dengan auth_code
+    r = cf_requests.get(
+        'https://x.com/i/api/2/oauth2/authorize',
+        params={
+            'response_type':         qs.get('response_type', ['code'])[0],
+            'client_id':             qs.get('client_id', [''])[0],
+            'redirect_uri':          qs.get('redirect_uri', [''])[0],
+            'scope':                 qs.get('scope', [''])[0],
+            'state':                 state,
+            'code_challenge':        qs.get('code_challenge', [''])[0],
+            'code_challenge_method': qs.get('code_challenge_method', ['S256'])[0],
+        },
+        headers=x_api_headers,
+        impersonate='chrome110'
+    )
+    log(idx, f'[X] OAuth GET status: {r.status_code}')
+    log(idx, f'[X] OAuth GET response: {r.text[:300]}')
+
+    resp_json = r.json()
+    auth_code = resp_json.get('auth_code')
+    if not auth_code:
+        raise Exception(f'auth_code tidak ditemukan: {resp_json}')
+    log(idx, f'[X] auth_code: {auth_code[:20]}...')
 
     # Approve via endpoint yang dipake frontend X
     r2 = cf_requests.post(
