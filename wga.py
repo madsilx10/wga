@@ -135,7 +135,9 @@ async def link_x(token, x_creds, idx):
     REDIRECT_URI = 'https://api.wga.xyz/users/social-link/x/callback'
     SCOPE        = 'tweet.read users.read follows.write follows.read'
 
-    requests.get(f'{BASE_URL}/users/social-link/x/authorize', headers=api_headers(token))
+    r = requests.get(f'{BASE_URL}/users/social-link/x/authorize', headers=api_headers(token))
+    log(idx, f'[X] Authorize status: {r.status_code}')
+    log(idx, f'[X] Authorize response: {r.text}')
 
     params = (
         f'response_type=code'
