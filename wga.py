@@ -207,6 +207,19 @@ async def link_x(token, x_creds, idx):
     log(idx, f'[X] Approve status: {r2.status_code}')
     log(idx, f'[X] Approve response: {r2.text[:300]}')
 
+    # Extract redirect_uri dari response, lalu hit WGA callback
+    approve_data = r2.json()
+    redirect_uri = approve_data.get('redirect_uri')
+    if not redirect_uri:
+        raise Exception(f'redirect_uri tidak ada: {approve_data}')
+
+    r3 = requests.get(redirect_uri, headers=api_headers(token), allow_redirects=True)
+    log(idx, f'[X] Callback status: {r3.status_code}')
+    log(idx, f'[X] Callback response: {r3.text[:300]}')
+    if r3.status_code != 200:
+        raise Exception(f'WGA callback gagal: {r3.status_code} {r3.text}')
+    log(idx, '[X] X linked ✓')
+
 # ============================================================
 # PROCESS AKUN
 # ============================================================
