@@ -117,6 +117,30 @@ async def link_telegram(token, session_str, idx):
         raise Exception(f'TG link gagal: {r.status_code} {r.text[:200]}')
 
 # ============================================================
+# STEP 1.6 — JOIN TG CHANNEL & GROUP
+# ============================================================
+TG_CHANNEL = 'Web3GrowthAgent'
+TG_GROUP   = 'Web3GrowthAgentch'
+
+async def join_tg_channel_group(token, session_str, idx):
+    async with Client(
+        name=f'wga_join_{idx}',
+        api_id=TG_API_ID,
+        api_hash=TG_API_HASH,
+        session_string=session_str,
+        in_memory=True,
+    ) as app:
+        await app.join_chat(TG_CHANNEL)
+        await app.join_chat(TG_GROUP)
+
+    # Verify ke WGA
+    r1 = requests.post(f'{BASE_URL}/users/telegram/join-channel', headers=api_headers(token))
+    log(idx, f'[TG] Join channel → {r1.status_code} | rewarded: {r1.json().get("rewarded")}')
+
+    r2 = requests.post(f'{BASE_URL}/users/telegram/join-group', headers=api_headers(token))
+    log(idx, f'[TG] Join group   → {r2.status_code} | rewarded: {r2.json().get("rewarded")}')
+
+# ============================================================
 # STEP 2 — LINK X (PKCE OAUTH2)
 # ============================================================
 async def link_x(token, x_creds, idx):
@@ -290,6 +314,13 @@ async def process_account(idx, mode):
                 await link_telegram(token, session_str, idx)
             await asyncio.sleep(1)
 
+            # Join TG channel & group
+            if not session_str:
+                log(idx, '[TG] Skip join ch/group (session tidak ada)')
+            else:
+                await join_tg_channel_group(token, session_str, idx)
+            await asyncio.sleep(1)
+
             # Link X
             if is_x_linked(status):
                 log(idx, '[X] Sudah linked, skip konek X')
@@ -317,14 +348,17 @@ async def process_account(idx, mode):
             do_check(token, idx)
 
         elif mode == 'link tg':
-            status = get_social_link_status(token)
             session_str = sessions[idx] if idx < len(sessions) else None
-            if is_tg_linked(status):
-                log(idx, '[TG] Sudah linked, skip')
-            elif not session_str:
-                log(idx, '[TG] session.txt tidak ada untuk akun ini, skip')
+            if not session_str:
+                log(idx, '[TG] session.txt tidak ada, skip')
             else:
-                await link_telegram(token, session_str, idx)
+                status = get_social_link_status(token)
+                if is_tg_linked(status):
+                    log(idx, '[TG] Sudah linked, skip link')
+                else:
+                    await link_telegram(token, session_str, idx)
+                await asyncio.sleep(1)
+                await join_tg_channel_group(token, session_str, idx)
 
         log(idx, 'Selesai ✓')
     except Exception as e:
@@ -350,7 +384,7 @@ async def main():
     print('  2. daily    — check-in + open box')
     print('  3. open box — buka box aja')
     print('  4. check   — cek total XYZ')
-    print('  5. link tg  — konek Telegram aja')
+    print('  5. link tg  — konek + join channel & group Telegram')
     mode_map = {'1': 'all', '2': 'daily', '3': 'open box', '4': 'check', '5': 'link tg'}
     pilihan = input('\nPilih mode [1/2/3/4/5]: ').strip()
     mode = mode_map.get(pilihan)
