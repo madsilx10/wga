@@ -113,6 +113,8 @@ async def link_telegram(token, session_str, idx):
     )
     if r.status_code == 200:
         log(idx, f'[TG] Linked ✓ (id: {tg_id})')
+    elif 'already linked' in r.text.lower():
+        log(idx, f'[TG] Sudah linked, skip')
     else:
         raise Exception(f'TG link gagal: {r.status_code} {r.text[:200]}')
 
