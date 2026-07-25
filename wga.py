@@ -105,6 +105,7 @@ async def link_telegram(token, session_str, idx):
     ) as app:
         me = await app.get_me()
         tg_id = me.id
+        await asyncio.sleep(2)
 
     r = requests.post(
         f'{BASE_URL}/users/telegram/link',
@@ -133,7 +134,9 @@ async def join_tg_channel_group(token, session_str, idx):
         in_memory=True,
     ) as app:
         await app.join_chat(TG_CHANNEL)
+        await asyncio.sleep(2)
         await app.join_chat(TG_GROUP)
+        await asyncio.sleep(2)
 
     # Verify ke WGA
     r1 = requests.post(f'{BASE_URL}/users/telegram/join-channel', headers=api_headers(token))
