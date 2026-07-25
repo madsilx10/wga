@@ -4,18 +4,18 @@ import base64
 import secrets
 import requests
 from eth_account import Account
-from eth_account.messages import encode_defunct
 from pyrogram import Client
+from eth_account.messages import encode_defunct
 
 # ============================================================
 # CONFIG
 # ============================================================
 BASE_URL    = 'https://api.wga.xyz'
 INVITE_CODE = 'Z0V0DL3T'
+DELAY       = 3
 TG_API_ID   = 0       # isi API ID dari my.telegram.org
 TG_API_HASH = ''      # isi API HASH dari my.telegram.org
 WGA_BOT     = 'WgaAgentBot'
-DELAY       = 3
 
 # ============================================================
 # READ FILES
@@ -80,13 +80,41 @@ def login(privkey):
 # ============================================================
 # CEK STATUS SOCIAL LINK
 # ============================================================
-def is_x_linked(token):
+def get_social_link_status(token):
     r = requests.get(f'{BASE_URL}/users/social-link/status', headers=api_headers(token))
     if r.status_code != 200:
-        return False
-    data = r.json()
-    # cek field x / twitter linked
-    return data.get('x') or data.get('twitter') or data.get('xLinked') or False
+        return {}
+    return r.json()
+
+def is_x_linked(status):
+    return bool(status.get('x') or status.get('twitter') or status.get('xLinked'))
+
+def is_tg_linked(status):
+    return bool(status.get('telegram') or status.get('telegramLinked'))
+
+# ============================================================
+# STEP 1.5 — LINK TELEGRAM
+# ============================================================
+async def link_telegram(token, session_str, idx):
+    async with Client(
+        name=f'wga_{idx}',
+        api_id=TG_API_ID,
+        api_hash=TG_API_HASH,
+        session_string=session_str,
+        in_memory=True,
+    ) as app:
+        me = await app.get_me()
+        tg_id = me.id
+
+    r = requests.post(
+        f'{BASE_URL}/users/telegram/link',
+        headers=api_headers(token),
+        json={'telegramId': tg_id},
+    )
+    if r.status_code == 200:
+        log(idx, f'[TG] Linked ✓ (id: {tg_id})')
+    else:
+        raise Exception(f'TG link gagal: {r.status_code} {r.text[:200]}')
 
 # ============================================================
 # STEP 2 — LINK X (PKCE OAUTH2)
@@ -250,8 +278,20 @@ async def process_account(idx, mode):
         log(idx, f'Login OK → {address}')
 
         if mode == 'all':
-            # Cek X linked dulu
-            if is_x_linked(token):
+            status = get_social_link_status(token)
+
+            # Link Telegram
+            session_str = sessions[idx] if idx < len(sessions) else None
+            if is_tg_linked(status):
+                log(idx, '[TG] Sudah linked, skip')
+            elif not session_str:
+                log(idx, '[TG] session.txt tidak ada untuk akun ini, skip')
+            else:
+                await link_telegram(token, session_str, idx)
+            await asyncio.sleep(1)
+
+            # Link X
+            if is_x_linked(status):
                 log(idx, '[X] Sudah linked, skip konek X')
             else:
                 if not x_creds:
@@ -275,6 +315,16 @@ async def process_account(idx, mode):
 
         elif mode == 'check':
             do_check(token, idx)
+
+        elif mode == 'link tg':
+            status = get_social_link_status(token)
+            session_str = sessions[idx] if idx < len(sessions) else None
+            if is_tg_linked(status):
+                log(idx, '[TG] Sudah linked, skip')
+            elif not session_str:
+                log(idx, '[TG] session.txt tidak ada untuk akun ini, skip')
+            else:
+                await link_telegram(token, session_str, idx)
 
         log(idx, 'Selesai ✓')
     except Exception as e:
@@ -300,8 +350,9 @@ async def main():
     print('  2. daily    — check-in + open box')
     print('  3. open box — buka box aja')
     print('  4. check   — cek total XYZ')
-    mode_map = {'1': 'all', '2': 'daily', '3': 'open box', '4': 'check'}
-    pilihan = input('\nPilih mode [1/2/3/4]: ').strip()
+    print('  5. link tg  — konek Telegram aja')
+    mode_map = {'1': 'all', '2': 'daily', '3': 'open box', '4': 'check', '5': 'link tg'}
+    pilihan = input('\nPilih mode [1/2/3/4/5]: ').strip()
     mode = mode_map.get(pilihan)
     if not mode:
         print('Pilihan tidak valid.')
