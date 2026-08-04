@@ -163,10 +163,11 @@ const ADDRESS = wallet.address;
       { timeout: 120000 }
     );
 
-    await page.goto('https://wga.xyz/reward', { waitUntil: 'networkidle' });
+    await page.goto('https://wga.xyz/reward', { waitUntil: 'domcontentloaded', timeout: 45000 });
     console.log(`Berhasil masuk ke: ${await page.title()}`);
 
-    await page.waitForTimeout(2000);
+    await page.getByText('Connect Wallet', { exact: true }).waitFor({ timeout: 30000 });
+    await page.waitForTimeout(1000);
     await page.getByText('Connect Wallet', { exact: true }).click();
     await page.waitForTimeout(1500);
 
