@@ -31,7 +31,6 @@ const ADDRESS = wallet.address;
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--single-process'
     ]
   });
 
@@ -39,6 +38,15 @@ const ADDRESS = wallet.address;
     userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   });
   const page = await context.newPage();
+
+  // Block resource berat yang gak perlu buat proses login (ngurangin beban RAM)
+  await page.route('**/*', (route) => {
+    const type = route.request().resourceType();
+    if (['image', 'font', 'media'].includes(type)) {
+      return route.abort();
+    }
+    return route.continue();
+  });
 
   try {
     // ----------------------------------------------------
