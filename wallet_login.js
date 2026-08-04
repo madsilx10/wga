@@ -152,7 +152,7 @@ const ADDRESS = wallet.address;
     // Siapkan listener buat nangkep response /users/login SEBELUM klik apapun
     const loginResponsePromise = page.waitForResponse(
       res => res.url().includes('/users/login') && res.request().method() === 'POST',
-      { timeout: 60000 }
+      { timeout: 120000 }
     );
 
     await page.goto('https://wga.xyz/reward', { waitUntil: 'networkidle' });
