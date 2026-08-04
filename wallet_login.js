@@ -60,6 +60,13 @@ const ADDRESS = wallet.address;
     // Inject fake EIP-1193 wallet provider (niruin MetaMask)
     await page.addInitScript((fakeAddress) => {
       const listeners = {};
+      const on = (event, cb) => {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(cb);
+      };
+      const emit = (event, ...args) => {
+        (listeners[event] || []).forEach(cb => { try { cb(...args); } catch (e) {} });
+      };
       const fakeProvider = {
         isMetaMask: true,
         isStatus: false,
@@ -68,23 +75,39 @@ const ADDRESS = wallet.address;
         chainId: '0x38', // BSC mainnet, sesuaikan kalau perlu
         networkVersion: '56',
         request: async ({ method, params }) => {
+          console.log('[PROVIDER]', method, JSON.stringify(params));
           if (method === 'eth_requestAccounts' || method === 'eth_accounts') {
+            console.log('[PROVIDER] -> return address', fakeAddress);
+            setTimeout(() => {
+              emit('connect', { chainId: '0x38' });
+              emit('accountsChanged', [fakeAddress]);
+              emit('chainChanged', '0x38');
+            }, 50);
             return [fakeAddress];
           }
           if (method === 'eth_chainId') return '0x38';
           if (method === 'net_version') return '56';
           if (method === 'personal_sign') {
+            console.log('[PROVIDER] personal_sign dipanggil, minta node buat sign...');
             const message = params[0];
-            const sig = await window.__nodeSignMessage(message);
-            return sig;
+            try {
+              const sig = await window.__nodeSignMessage(message);
+              console.log('[PROVIDER] sign sukses, sig=', sig ? sig.slice(0, 20) + '...' : sig);
+              return sig;
+            } catch (e) {
+              console.log('[PROVIDER] sign GAGAL:', e.message);
+              throw e;
+            }
           }
           if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
             return null;
           }
           return null;
         },
-        on: (event, cb) => { listeners[event] = cb; },
-        removeListener: (event) => { delete listeners[event]; },
+        on: on,
+        removeListener: (event, cb) => {
+          if (listeners[event]) listeners[event] = listeners[event].filter(l => l !== cb);
+        },
         isConnected: () => true,
       };
       window.ethereum = fakeProvider;
