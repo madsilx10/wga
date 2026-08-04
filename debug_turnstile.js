@@ -47,13 +47,17 @@ chromium.use(stealthPlugin);
         .map(f => f.src);
       const scripts = Array.from(document.querySelectorAll('script'))
         .map(s => s.src).filter(s => s.includes('turnstile') || s.includes('challenges.cloudflare'));
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'))
+        .map(el => ({ tag: el.tagName, text: el.innerText.trim().slice(0, 40), cls: el.className }))
+        .filter(b => b.text);
       return {
         hasInput: !!inputEl,
         inputValue: inputEl ? inputEl.value : null,
         turnstileDivs,
         iframes,
         turnstileScripts: scripts,
-        bodySnippet: document.body.innerHTML.slice(0, 500)
+        buttons,
+        bodySnippet: document.body.innerHTML.slice(0, 2000)
       };
     });
 
