@@ -112,6 +112,23 @@ const ADDRESS = wallet.address;
       };
       window.ethereum = fakeProvider;
       window.ethereum.providers = [fakeProvider];
+
+      // EIP-6963: announce provider biar MetaMask SDK / wagmi detect sebagai extension asli
+      // (kalau gak ada ini, banyak dapp modern langsung fallback ke QR/mobile connect)
+      const providerDetail = {
+        info: {
+          uuid: '350670db-19fa-4704-a166-e52e178b59d2',
+          name: 'MetaMask',
+          icon: 'data:image/svg+xml;base64,',
+          rdns: 'io.metamask',
+        },
+        provider: fakeProvider,
+      };
+      const announceProvider = () => {
+        window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail: providerDetail }));
+      };
+      window.addEventListener('eip6963:requestProvider', announceProvider);
+      announceProvider();
     }, ADDRESS);
 
     page.on('console', msg => console.log('[BROWSER]', msg.type(), msg.text()));
