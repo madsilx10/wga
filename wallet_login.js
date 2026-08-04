@@ -76,7 +76,12 @@ const ADDRESS = wallet.address;
         networkVersion: '56',
         request: async ({ method, params }) => {
           console.log('[PROVIDER]', method, JSON.stringify(params));
-          if (method === 'eth_requestAccounts' || method === 'eth_accounts') {
+          if (method === 'eth_accounts') {
+            // Belum pernah di-approve = kosong, biar dapp nampilin tombol "Connect Wallet" normal
+            return window.__fakeConnected ? [fakeAddress] : [];
+          }
+          if (method === 'eth_requestAccounts') {
+            window.__fakeConnected = true;
             console.log('[PROVIDER] -> return address', fakeAddress);
             setTimeout(() => {
               emit('connect', { chainId: '0x38' });
