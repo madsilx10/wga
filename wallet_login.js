@@ -91,14 +91,15 @@ const ADDRESS = wallet.address;
       window.ethereum.providers = [fakeProvider];
     }, ADDRESS);
 
-    page.on('console', msg => console.log('[BROWSER]', msg.text()));
+    page.on('console', msg => console.log('[BROWSER]', msg.type(), msg.text()));
+    page.on('pageerror', err => console.log('[PAGEERROR]', err.message));
     page.on('request', req => {
       if (req.url().includes('/users/') || req.url().includes('turnstile') || req.url().includes('cloudflare')) {
         console.log('[NET->]', req.method(), req.url());
       }
     });
     page.on('response', res => {
-      if (res.url().includes('/users/') ) {
+      if (res.url().includes('/users/')) {
         console.log('[NET<-]', res.status(), res.url());
       }
     });
@@ -115,9 +116,18 @@ const ADDRESS = wallet.address;
     await page.waitForTimeout(2000);
     await page.getByText('Connect Wallet', { exact: true }).click();
     await page.waitForTimeout(1500);
-    await page.getByText('Connect with MetaMask', { exact: true }).click();
-    console.log('[STEP] Udah klik Connect with MetaMask, nunggu flow lanjut...');
-    await page.waitForTimeout(3000);
+
+    console.log('[STEP] Mau klik Connect with MetaMask...');
+    await page.getByRole('button', { name: 'Connect with MetaMask' }).click({ force: true });
+    console.log('[STEP] Udah klik (role=button). Nunggu flow lanjut...');
+    await page.waitForTimeout(4000);
+
+    const modalHtml = await page.evaluate(() => {
+      const modal = document.querySelector('[class*="modal"], [role="dialog"]');
+      return modal ? modal.innerHTML.slice(0, 1500) : 'NO_MODAL_FOUND';
+    });
+    console.log('[STEP] modalHtml setelah klik:', modalHtml);
+
     await page.screenshot({ path: 'debug_after_connect.png', fullPage: true });
     console.log('[STEP] Screenshot debug_after_connect.png disimpan.');
 
