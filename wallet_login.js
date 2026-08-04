@@ -1,0 +1,131 @@
+// ============================================================================
+// TEMPLATE UTAMA PLAYWRIGHT NODE.JS UNTUK TERMUX (GLOBAL + STEALTH)
+// ============================================================================
+
+// 1. Trik manipulasi platform agar lolos pengecekan di Android
+Object.defineProperty(process, 'platform', { get: () => 'linux' });
+
+const { chromium } = require('playwright-extra');
+const stealthPlugin = require('puppeteer-extra-plugin-stealth')();
+chromium.use(stealthPlugin);
+const { ethers } = require('ethers');
+
+// Privkey dikirim sebagai argumen: node wallet_login.js 0xPRIVKEY
+const PRIVKEY = process.argv[2];
+if (!PRIVKEY) {
+  console.log('RESULT_JSON:' + JSON.stringify({ success: false, error: 'Privkey gak dikasih (argv[2] kosong)' }));
+  process.exit(1);
+}
+const wallet = new ethers.Wallet(PRIVKEY);
+const ADDRESS = wallet.address;
+
+(async () => {
+  console.log("Memulai browser Chromium Termux...");
+  
+  // 2. Konfigurasi wajib biner Chromium lokal Termux
+  const browser = await chromium.launch({
+    executablePath: '/data/data/com.termux/files/usr/bin/chromium-browser',
+    headless: true, // Wajib true di Termux standar
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--single-process'
+    ]
+  });
+
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+  });
+  const page = await context.newPage();
+
+  try {
+    // ----------------------------------------------------
+    // [KODE SCRAPING / BOT SAYA AKAN DIMASUKKAN DI SINI]
+
+    // Expose fungsi signing asli (pake privkey) yang bisa dipanggil dari browser context
+    await page.exposeFunction('__nodeSignMessage', async (message) => {
+      // message dari personal_sign biasanya hex string (0x...) berisi bytes pesan asli
+      let signature;
+      if (typeof message === 'string' && message.startsWith('0x')) {
+        const bytes = ethers.utils.arrayify(message);
+        signature = await wallet.signMessage(bytes);
+      } else {
+        signature = await wallet.signMessage(message);
+      }
+      return signature;
+    });
+
+    // Inject fake EIP-1193 wallet provider (niruin MetaMask)
+    await page.addInitScript((fakeAddress) => {
+      const listeners = {};
+      const fakeProvider = {
+        isMetaMask: true,
+        isStatus: false,
+        _metamask: { isUnlocked: () => Promise.resolve(true) },
+        selectedAddress: fakeAddress,
+        chainId: '0x38', // BSC mainnet, sesuaikan kalau perlu
+        networkVersion: '56',
+        request: async ({ method, params }) => {
+          if (method === 'eth_requestAccounts' || method === 'eth_accounts') {
+            return [fakeAddress];
+          }
+          if (method === 'eth_chainId') return '0x38';
+          if (method === 'net_version') return '56';
+          if (method === 'personal_sign') {
+            const message = params[0];
+            const sig = await window.__nodeSignMessage(message);
+            return sig;
+          }
+          if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
+            return null;
+          }
+          return null;
+        },
+        on: (event, cb) => { listeners[event] = cb; },
+        removeListener: (event) => { delete listeners[event]; },
+        isConnected: () => true,
+      };
+      window.ethereum = fakeProvider;
+      window.ethereum.providers = [fakeProvider];
+    }, ADDRESS);
+
+    // Siapkan listener buat nangkep response /users/login SEBELUM klik apapun
+    const loginResponsePromise = page.waitForResponse(
+      res => res.url().includes('/users/login') && res.request().method() === 'POST',
+      { timeout: 60000 }
+    );
+
+    await page.goto('https://wga.xyz/reward', { waitUntil: 'networkidle' });
+    console.log(`Berhasil masuk ke: ${await page.title()}`);
+
+    await page.waitForTimeout(2000);
+    await page.getByText('Connect Wallet', { exact: true }).click();
+    await page.waitForTimeout(1500);
+    await page.getByText('Connect with MetaMask', { exact: true }).click();
+
+    // Tunggu situsnya sendiri yang proses Turnstile + nonce + sign + login
+    const loginResponse = await loginResponsePromise;
+    const loginBody = await loginResponse.json();
+
+    if (!loginBody.accessToken) {
+      throw new Error('Login response gak ada accessToken: ' + JSON.stringify(loginBody));
+    }
+
+    const result = {
+      success: true,
+      address: ADDRESS,
+      accessToken: loginBody.accessToken,
+    };
+
+    console.log('RESULT_JSON:' + JSON.stringify(result));
+    // ----------------------------------------------------
+  } catch (error) {
+    console.error("Terjadi eror:", error.message);
+    console.log('RESULT_JSON:' + JSON.stringify({ success: false, error: error.message }));
+  } finally {
+    await browser.close();
+    console.log("Browser ditutup.");
+  }
+})();
