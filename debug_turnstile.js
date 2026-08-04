@@ -36,7 +36,11 @@ chromium.use(stealthPlugin);
     await page.goto('https://wga.xyz/reward', { waitUntil: 'networkidle' });
     console.log(`Berhasil masuk ke: ${await page.title()}`);
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
+
+    // Klik tombol Connect Wallet
+    await page.getByText('Connect Wallet', { exact: true }).click();
+    await page.waitForTimeout(2000);
 
     // Cek apakah ada elemen/iframe terkait turnstile di DOM
     const info = await page.evaluate(() => {
@@ -47,7 +51,7 @@ chromium.use(stealthPlugin);
         .map(f => f.src);
       const scripts = Array.from(document.querySelectorAll('script'))
         .map(s => s.src).filter(s => s.includes('turnstile') || s.includes('challenges.cloudflare'));
-      const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'))
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"], a, li, div[class*="wallet"]'))
         .map(el => ({ tag: el.tagName, text: el.innerText.trim().slice(0, 40), cls: el.className }))
         .filter(b => b.text);
       return {
@@ -57,7 +61,7 @@ chromium.use(stealthPlugin);
         iframes,
         turnstileScripts: scripts,
         buttons,
-        bodySnippet: document.body.innerHTML.slice(0, 2000)
+        bodySnippet: document.body.innerHTML.slice(0, 3000)
       };
     });
 
