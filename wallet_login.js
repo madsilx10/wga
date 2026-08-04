@@ -184,6 +184,12 @@ const ADDRESS = wallet.address;
     });
     console.log('[STEP] Tombol yang kedetect setelah connect:', JSON.stringify(extraButtons));
 
+    if (extraButtons.includes('Sign message')) {
+      console.log('[STEP] Klik tombol "Sign message"...');
+      await page.getByRole('button', { name: 'Sign message' }).click({ force: true });
+      console.log('[STEP] Udah klik Sign message, nunggu login response...');
+    }
+
     // Tunggu situsnya sendiri yang proses Turnstile + nonce + sign + login
     const loginResponse = await loginResponsePromise;
     const loginBody = await loginResponse.json();
