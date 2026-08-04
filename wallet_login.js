@@ -91,6 +91,18 @@ const ADDRESS = wallet.address;
       window.ethereum.providers = [fakeProvider];
     }, ADDRESS);
 
+    page.on('console', msg => console.log('[BROWSER]', msg.text()));
+    page.on('request', req => {
+      if (req.url().includes('/users/') || req.url().includes('turnstile') || req.url().includes('cloudflare')) {
+        console.log('[NET->]', req.method(), req.url());
+      }
+    });
+    page.on('response', res => {
+      if (res.url().includes('/users/') ) {
+        console.log('[NET<-]', res.status(), res.url());
+      }
+    });
+
     // Siapkan listener buat nangkep response /users/login SEBELUM klik apapun
     const loginResponsePromise = page.waitForResponse(
       res => res.url().includes('/users/login') && res.request().method() === 'POST',
@@ -104,6 +116,18 @@ const ADDRESS = wallet.address;
     await page.getByText('Connect Wallet', { exact: true }).click();
     await page.waitForTimeout(1500);
     await page.getByText('Connect with MetaMask', { exact: true }).click();
+    console.log('[STEP] Udah klik Connect with MetaMask, nunggu flow lanjut...');
+    await page.waitForTimeout(3000);
+    await page.screenshot({ path: 'debug_after_connect.png', fullPage: true });
+    console.log('[STEP] Screenshot debug_after_connect.png disimpan.');
+
+    // Cek kalau ada tombol Sign/Login/Confirm tambahan yang perlu diklik
+    const extraButtons = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('button, [role="button"]'))
+        .map(el => el.innerText.trim())
+        .filter(t => t);
+    });
+    console.log('[STEP] Tombol yang kedetect setelah connect:', JSON.stringify(extraButtons));
 
     // Tunggu situsnya sendiri yang proses Turnstile + nonce + sign + login
     const loginResponse = await loginResponsePromise;
