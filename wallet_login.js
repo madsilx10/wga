@@ -30,9 +30,7 @@ const ADDRESS = wallet.address;
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
-      '--enable-unsafe-swiftshader',
+      '--disable-gpu',
       '--single-process'
     ]
   });
@@ -41,6 +39,18 @@ const ADDRESS = wallet.address;
     userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   });
   const page = await context.newPage();
+
+  // Matiin WebGL total (return null di getContext) biar Cloudflare gak nyoba probe WebGL
+  // yang selama ini bikin browser crash di Termux (WebGL context di sini emang gak stabil)
+  await page.addInitScript(() => {
+    const origGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
+        return null;
+      }
+      return origGetContext.apply(this, [type, ...args]);
+    };
+  });
 
   try {
     // ----------------------------------------------------
